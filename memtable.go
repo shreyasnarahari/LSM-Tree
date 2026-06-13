@@ -125,3 +125,14 @@ func (it *MemTableIterator) Timestamp() uint64 {
 func (it *MemTableIterator) Tombstone() bool {
 	return it.node.tombstone
 }
+
+// Error returns any error encountered during iteration. MemTable iteration
+// is entirely in-memory and never fails, so this always returns nil.
+func (it *MemTableIterator) Error() error {
+	return nil
+}
+
+// Close releases resources. For MemTableIterator, this is a no-op.
+func (it *MemTableIterator) Close() error {
+	return nil
+}

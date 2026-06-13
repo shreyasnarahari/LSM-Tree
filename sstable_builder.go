@@ -59,7 +59,7 @@ type indexEntry struct {
 // Each data block entry:
 //
 //	[KeyLen 2B][ValLen 4B][Tombstone 1B][Timestamp 8B][Key][Value]
-func BuildSSTable(path string, iter *MemTableIterator, expectedItems int) error {
+func BuildSSTable(path string, iter Iterator, expectedItems int) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("sstable: create %q: %w", path, err)

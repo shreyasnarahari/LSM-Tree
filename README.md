@@ -168,11 +168,27 @@ The central orchestrator that ties all components into a thread-safe `DB` struct
 
 ---
 
+### Phase 5 — Background Compaction
+
+To prevent read performance degradation, a background goroutine merges multiple SSTables into a single SSTable, purging tombstones and reclaiming disk space.
+
+| Feature | Detail |
+|---------|--------|
+| **Strategy** | Universal L0 Compaction (triggered by `CompactionThreshold`) |
+| **K-Way Merge** | `container/heap` min-heap across iterators |
+| **Shadowing** | Newer iterators win; older occurrences of the same key are discarded |
+| **Purging** | Tombstones are safely discarded when all files are compacted |
+| **Atomic Swap** | New SSTable written → `stateMu` locked → old files removed and new file appended → lock released |
+
+**Files:** [`iterator.go`](iterator.go) · [`sstable_iterator.go`](sstable_iterator.go) · [`merge_iterator.go`](merge_iterator.go) · [`compaction.go`](compaction.go) · [`compaction_test.go`](compaction_test.go)
+
+---
+
 ## Upcoming
 
 | Phase | Component | Status |
 |-------|-----------|--------|
-| 5 | **Background Compaction** — k-way merge via min-heap, tombstone purging, atomic file swap | 📋 Planned |
+| 6 | **Next Steps** — Maybe a crash recovery stress test, caching (Block Cache), or network API (gRPC/HTTP) | 📋 TBD |
 
 ---
 

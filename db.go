@@ -30,6 +30,10 @@ type DBOptions struct {
 	// call returns (highest safety). When false, the WAL is fsynced
 	// periodically or on Close (higher throughput, small data-loss window).
 	SyncOnWrite bool
+
+	// CompactionThreshold is the number of L0 SSTables that triggers a compaction.
+	// Default: 4.
+	CompactionThreshold int
 }
 
 func (o *DBOptions) memTableSize() int64 {
@@ -76,6 +80,10 @@ type DB struct {
 	// MemTable. Capacity 1 to avoid blocking the write path.
 	flushCh chan struct{}
 
+	// compactionCh signals the background goroutine to compact SSTables.
+	// Capacity 1.
+	compactionCh chan struct{}
+
 	// Lifecycle management.
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -96,11 +104,12 @@ func Open(opts DBOptions) (*DB, error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	db := &DB{
-		opts:    opts,
-		active:  NewMemTable(opts.memTableSize()),
-		flushCh: make(chan struct{}, 1),
-		ctx:     ctx,
-		cancel:  cancel,
+		opts:         opts,
+		active:       NewMemTable(opts.memTableSize()),
+		flushCh:      make(chan struct{}, 1),
+		compactionCh: make(chan struct{}, 1),
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 
 	// --- load existing SSTables ---
@@ -127,8 +136,9 @@ func Open(opts DBOptions) (*DB, error) {
 	db.wal = wal
 
 	// --- start background flush goroutine ---
-	db.wg.Add(1)
+	db.wg.Add(2)
 	go db.flushLoop()
+	go db.compactionLoop()
 
 	return db, nil
 }
@@ -376,6 +386,12 @@ func (db *DB) flushAllImmutables() {
 		// Remove the oldest immutable (last element).
 		db.immutables = db.immutables[:len(db.immutables)-1]
 		db.stateMu.Unlock()
+
+		// Trigger compaction asynchronously
+		select {
+		case db.compactionCh <- struct{}{}:
+		default:
+		}
 	}
 }
 
@@ -470,7 +486,7 @@ func (db *DB) Close() error {
 
 	// Close WAL.
 	var firstErr error
-	if err := db.wal.Close(); err != nil && firstErr == nil {
+	if err := db.wal.Close(); err != nil {
 		firstErr = fmt.Errorf("db: close wal: %w", err)
 	}
 
