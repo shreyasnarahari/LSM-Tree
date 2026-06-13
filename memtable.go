@@ -51,7 +51,6 @@ func (m *MemTable) PutWithTimestamp(key, value []byte, timestamp uint64, tombsto
 //   - (nil,   false, false) — key not found
 //
 // The returned value slice references internal memory; do not modify it.
-// This design keeps the read path at zero heap allocations.
 func (m *MemTable) Get(key []byte) (value []byte, found bool, isDeleted bool) {
 	val, _, found, tomb := m.list.Get(key)
 	return val, found, tomb

@@ -44,23 +44,14 @@ func (db *DB) runCompaction() {
 	copy(tablesToCompact, db.sstables) // newest first
 	db.stateMu.RUnlock()
 
-	// 1. Create iterators for all tables.
 	iters := make([]Iterator, 0, len(tablesToCompact))
 	for _, sst := range tablesToCompact {
 		iters = append(iters, sst.Iterator())
 	}
 
-	// 2. Create the MergeIterator.
 	mergeIt := NewMergeIterator(iters)
 	defer mergeIt.Close()
 
-	// 3. Create a MemTable wrapper around the MergeIterator to reuse BuildSSTable.
-	// We need to write the merged entries to a new SSTable.
-	// BuildSSTable expects a MemTableIterator, but we have a generic Iterator.
-	// Wait, BuildSSTable takes *MemTableIterator specifically.
-	// We should change BuildSSTable to accept the Iterator interface instead!
-
-	// Let's create the new SSTable.
 	seq := db.sstSeq.Add(1)
 	newSSTPath := filepath.Join(db.opts.Dir, fmt.Sprintf("sst_%06d.sst", seq))
 

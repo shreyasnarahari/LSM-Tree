@@ -486,7 +486,6 @@ func TestWALCRC32CIntegrity(t *testing.T) {
 // Benchmarks
 
 // BenchmarkWALAppend measures the cost of a single Append (no Sync).
-// Target: 0 allocs/op on the hot path.
 func BenchmarkWALAppend(b *testing.B) {
 	path := filepath.Join(b.TempDir(), "bench.wal")
 	w, err := OpenWAL(path)

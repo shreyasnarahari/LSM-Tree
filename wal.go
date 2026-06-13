@@ -71,7 +71,7 @@ type WAL struct {
 
 	// scratch is a fixed-size header buffer embedded in the struct.
 	// It is reused across every Append call, keeping the hot path
-	// at zero heap allocations.
+	// pre-allocated slice to serialize headers without allocations.
 	scratch [walHeaderSize]byte
 }
 
@@ -104,7 +104,6 @@ func OpenWAL(path string) (*WAL, error) {
 //
 // This method does NOT call fsync; call Sync() to guarantee durability.
 //
-// Hot-path allocation budget: 0 allocs/op.
 // The fixed header is written into the pre-allocated scratch array,
 // and key/value bytes are forwarded directly from the caller's slices.
 func (w *WAL) Append(key, value []byte, tombstone bool) error {
@@ -262,7 +261,7 @@ func (it *WALIterator) Next() (*WALEntry, error) {
 
 	// 3. read variable-length payload
 	payloadLen := keySize + valueSize
-	payload := make([]byte, payloadLen) // 1 alloc: key+value backing array
+	payload := make([]byte, payloadLen)
 
 	if payloadLen > 0 {
 		_, err = io.ReadFull(it.reader, payload)

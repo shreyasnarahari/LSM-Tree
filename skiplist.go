@@ -73,7 +73,7 @@ func (sl *skipList) Put(key, value []byte, timestamp uint64, tombstone bool) {
 	defer sl.mu.Unlock()
 
 	// update[i] will hold the predecessor node at level i.
-	var update [maxHeight]*skipListNode // stack-allocated, 256 bytes
+	var update [maxHeight]*skipListNode
 	cur := sl.head
 	for i := sl.height - 1; i >= 0; i-- {
 		for cur.next[i] != nil && bytes.Compare(cur.next[i].key, key) < 0 {
@@ -121,7 +121,7 @@ func (sl *skipList) Put(key, value []byte, timestamp uint64, tombstone bool) {
 }
 
 // Get searches for key and returns the stored value and metadata.
-// Returns directly into the internal slice (no copy) for zero-alloc reads.
+// Returns directly into the internal slice.
 func (sl *skipList) Get(key []byte) (value []byte, timestamp uint64, found, tombstone bool) {
 	sl.mu.RLock()
 	defer sl.mu.RUnlock()
