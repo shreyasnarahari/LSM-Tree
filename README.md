@@ -2,7 +2,7 @@
 
 A **production-grade LSM Tree key-value storage engine** built from scratch in Go using **zero external dependencies** — only the Go standard library.
 
-This project is a rigorous systems engineering exercise designed to deeply explore direct disk I/O, binary serialization, lock-free data structures, and safe background daemon processing.
+This project is a rigorous systems engineering exercise designed to deeply explore direct disk I/O, binary serialization, concurrent data structures, and safe background daemon processing.
 
 ---
 
@@ -35,21 +35,21 @@ This project is a rigorous systems engineering exercise designed to deeply explo
 ```
 Put(key, value)
   │
-  ├── 1. Append to WAL (sequential write, buffered + fsync)
+  ├── 1. Append to WAL (sequential write, buffered + fsync for durability)
   │
   └── 2. Insert into MemTable (in-memory skip list, O(log N))
          │
          └── (if MemTable exceeds threshold)
-               ├── Rotate: active → immutable
-               ├── Create fresh MemTable
-               └── Background flush immutable → SSTable on disk
+               ├── Sync WAL → rotate: active MemTable → immutable
+               ├── Create fresh MemTable + new WAL
+               └── Signal background goroutine → flush immutable → SSTable
 ```
 
 ### Read Path
 ```
-Get(key) → search in freshness order, stop at first match:
+Get(key) → search in freshness order, stop at first hit or tombstone:
   │
-  ├── 1. Active MemTable           (in-memory, O(log N))
+  ├── 1. Active MemTable           (in-memory, O(log N), 0 allocs)
   ├── 2. Immutable MemTables       (newest → oldest)
   └── 3. L0 SSTables               (newest → oldest)
            │
@@ -58,9 +58,11 @@ Get(key) → search in freshness order, stop at first match:
            └── Read single block    → linear scan for key
 ```
 
+> **Tombstone short-circuit:** If a deletion marker (tombstone) is found at *any* level, `ErrKeyNotFound` is returned immediately — no deeper levels are searched. This guarantees O(1) delete semantics across the read path.
+
 ---
 
-## Components (Implemented)
+## Components
 
 ### Phase 1 — Write-Ahead Log (WAL)
 
@@ -102,20 +104,20 @@ Immutable, sorted files on disk optimized for minimal seek latency.
 #### SSTable File Layout
 ```
 ┌─────────────────────────────────────────┐
-│ Data Block 0  (4096 bytes, page-aligned)│
-│   [NumEntries][Entries…][Zero-padding]  │
-│ Data Block 1 … N                        │
-├─────────────────────────────────────────┤
-│ Index Block                             │
-│   [StartKey → (Offset, Length)] × N     │
-├─────────────────────────────────────────┤
-│ Bloom Filter Block                      │
-│   [NumBits | NumHashes | BitArray]      │
-├─────────────────────────────────────────┤
-│ Footer (40 bytes)                       │
-│   IndexOffset | IndexSize | BloomOffset │
-│   BloomSize   | Magic (0x4C534D5401)   │
-└─────────────────────────────────────────┘
+│ Data Block 0  (4096 bytes, page-aligned) │
+│   [NumEntries][Entries…][Zero-padding]   │
+│ Data Block 1 … N                         │
+├──────────────────────────────────────────┤
+│ Index Block                              │
+│   [StartKey → (Offset, Length)] × N      │
+├──────────────────────────────────────────┤
+│ Bloom Filter Block                       │
+│   [NumBits | NumHashes | BitArray]       │
+├──────────────────────────────────────────┤
+│ Footer (40 bytes)                        │
+│   IndexOffset | IndexSize | BloomOffset  │
+│   BloomSize   | Magic (0x4C534D5401)     │
+└──────────────────────────────────────────┘
 ```
 
 #### Bloom Filter
@@ -123,20 +125,53 @@ Immutable, sorted files on disk optimized for minimal seek latency.
 - **Target:** 1% false-positive rate → measured **1.00%** ✓
 - **Rejection:** **99.3%** of absent keys rejected without any disk I/O
 
-| Operation | Latency | Allocations |
-|-----------|---------|-------------|
-| Get (hit) | 2.2 µs | 2 allocs (block + value copy) |
-| Get (miss) | 65 ns | 0 allocs (bloom rejects) |
-
 **Files:** [`bloom.go`](bloom.go) · [`sstable_builder.go`](sstable_builder.go) · [`sstable_reader.go`](sstable_reader.go) · [`sstable_test.go`](sstable_test.go)
 
 ---
 
-## Upcoming Phases
+### Phase 4 — Core Engine
+
+The central orchestrator that ties all components into a thread-safe `DB` struct.
+
+| Feature | Detail |
+|---------|--------|
+| **Write path** | `sync.Mutex` serialised: WAL append → MemTable insert → rotate if full |
+| **Read path** | `sync.RWMutex` concurrent: Active → Immutables → SSTables (newest first) |
+| **MemTable rotation** | Brief pointer swap under write lock; background goroutine flushes to SSTable |
+| **Background flush** | Dedicated goroutine with `context.Context` cancellation + `sync.WaitGroup` lifecycle |
+| **Crash recovery** | On startup: load existing SSTables + replay WAL to reconstruct MemTable |
+| **Graceful shutdown** | `Close()` cancels context → waits for flush goroutine → syncs WAL → closes files |
+| **Tombstone shadowing** | Delete at any level immediately returns `ErrKeyNotFound` — no deeper search |
+
+#### Concurrency Model
+```
+                       ┌────────────────┐
+   Client writes ────► │  sync.Mutex    │──► WAL.Append() ──► MemTable.Put()
+                       └────────────────┘
+                              │
+                       (MemTable full?)
+                              │ yes
+                       ┌──────▼──────┐
+                       │   Rotate    │  stateMu.Lock: swap active ↔ immutable
+                       └──────┬──────┘
+                              │
+                       ┌──────▼──────┐
+                       │  flushCh    │──► Background Goroutine
+                       └─────────────┘         │
+                                               ▼
+                                       BuildSSTable() → Add to L0
+
+   Client reads ─────► stateMu.RLock → search active → imm → ssts → RUnlock
+```
+
+**Files:** [`db.go`](db.go) · [`db_test.go`](db_test.go)
+
+---
+
+## Upcoming
 
 | Phase | Component | Status |
 |-------|-----------|--------|
-| 4 | **Core Engine** — DB struct, concurrent read/write paths, MemTable rotation, background flush | 🔜 Next |
 | 5 | **Background Compaction** — k-way merge via min-heap, tombstone purging, atomic file swap | 📋 Planned |
 
 ---
@@ -147,75 +182,107 @@ Immutable, sorted files on disk optimized for minimal seek latency.
 
 - **Go 1.22+** (no external dependencies)
 
+### Quick Start
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "lsmtree"
+)
+
+func main() {
+    db, err := lsmtree.Open(lsmtree.DBOptions{
+        Dir:          "./data",
+        MemTableSize: 4 * 1024 * 1024, // 4 MB
+        SyncOnWrite:  true,
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer db.Close()
+
+    // Write
+    db.Put([]byte("hello"), []byte("world"))
+
+    // Read
+    val, err := db.Get([]byte("hello"))
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("hello = %s\n", val)
+
+    // Delete
+    db.Delete([]byte("hello"))
+}
+```
+
 ### Run Tests
 
 ```bash
-# Run all unit tests with verbose output
-go test -v -count=1 ./...
+# All tests with race detector
+go test -v -count=1 -race -timeout 120s ./...
 
-# Run with race detector (recommended)
-go test -v -count=1 -race ./...
+# Phase-specific tests
+go test -v -run TestWAL ./...        # Phase 1: WAL
+go test -v -run 'TestSkip|TestMem' ./...  # Phase 2: MemTable
+go test -v -run 'TestBloom|TestSST' ./...  # Phase 3: SSTable
+go test -v -run TestDB ./...          # Phase 4: Engine
 ```
 
 ### Run Benchmarks
 
 ```bash
-# All benchmarks with memory allocation tracking
+# All benchmarks with memory profiling
 go test -bench=. -benchmem -benchtime=3s -run=^$ ./...
 
-# WAL-specific benchmarks
+# Component-specific benchmarks
 go test -bench=BenchmarkWAL -benchmem -run=^$ ./...
-
-# Skip List / MemTable benchmarks
-go test -bench='BenchmarkSkipList|BenchmarkMemTable' -benchmem -run=^$ ./...
-
-# SSTable and Bloom filter benchmarks
-go test -bench='BenchmarkSSTable|BenchmarkBloom' -benchmem -run=^$ ./...
+go test -bench=BenchmarkSkipList -benchmem -run=^$ ./...
+go test -bench=BenchmarkDB -benchmem -run=^$ ./...
 ```
 
-### Escape Analysis Audit
-
-Verify that hot-path functions avoid unexpected heap allocations:
+### Escape Analysis
 
 ```bash
-go build -gcflags="-m" ./... 2>&1 | grep -E "(wal|skiplist|memtable|bloom|sstable)"
-```
-
-### Inspect SSTable Binary Layout
-
-```bash
-# Build an SSTable via tests, then inspect with hexdump
-go test -run TestSSTableRoundTrip -v ./...
-hexdump -C /tmp/test-sstable/*.sst | head -80
+go build -gcflags="-m" ./... 2>&1 | grep -v "test"
 ```
 
 ---
 
 ## Benchmark Results
 
-All benchmarks run on **Intel Core i5-10300H @ 2.50GHz**, Linux (WSL2).
+All benchmarks on **Intel Core i5-10300H @ 2.50GHz**, Linux (WSL2).
 
-### WAL
+### Core Engine (Phase 4)
 ```
-BenchmarkWALAppend-8          23,161,273    166.3 ns/op     0 B/op    0 allocs/op
-BenchmarkWALAppendBatch-8          1,136  3,279,321 ns/op  29.0 MB/s  0 B/op    0 allocs/op
-BenchmarkWALReplay-8                 284 12,792,319 ns/op 523.8 MB/s
-```
-
-### MemTable / Skip List
-```
-BenchmarkSkipListGet-8        14,491,893    162.4 ns/op     0 B/op    0 allocs/op
-BenchmarkSkipListGetParallel  45,977,524     51.2 ns/op     0 B/op    0 allocs/op
-BenchmarkMemTablePut-8        20,504,230    108.1 ns/op    48 B/op    1 allocs/op
-BenchmarkMemTableGet-8        13,374,375    157.9 ns/op     0 B/op    0 allocs/op
+BenchmarkDBPut-8              7,345,558     324 ns/op     48 B/op   1 allocs/op
+BenchmarkDBGet-8             11,909,064     222 ns/op      0 B/op   0 allocs/op  ✅
+BenchmarkDBGetFromSSTable-8     439,791    4945 ns/op   4091 B/op   1 allocs/op
+BenchmarkDBPutParallel-8      3,176,728     771 ns/op     71 B/op   4 allocs/op
 ```
 
-### SSTable & Bloom Filter
+### WAL (Phase 1)
 ```
-BenchmarkBloomFilterAdd-8     53,940,720     43.9 ns/op     0 B/op    0 allocs/op
-BenchmarkBloomFilterQuery-8   45,978,478     47.5 ns/op     0 B/op    0 allocs/op
-BenchmarkSSTableGet-8            972,285   2193   ns/op  4112 B/op    2 allocs/op
-BenchmarkSSTableGetMiss-8     36,227,282     64.7 ns/op    49 B/op    0 allocs/op
+BenchmarkWALAppend-8         23,161,273     166 ns/op      0 B/op   0 allocs/op  ✅
+BenchmarkWALAppendBatch-8         1,136   3.28 ms/op   29.0 MB/s    0 allocs/op
+BenchmarkWALReplay-8                284   12.8 ms/op  523.8 MB/s
+```
+
+### MemTable / Skip List (Phase 2)
+```
+BenchmarkSkipListGet-8       14,491,893     162 ns/op      0 B/op   0 allocs/op  ✅
+BenchmarkSkipListGetParallel 45,977,524      51 ns/op      0 B/op   0 allocs/op  ✅
+BenchmarkMemTablePut-8       20,504,230     108 ns/op     48 B/op   1 allocs/op
+```
+
+### SSTable & Bloom (Phase 3)
+```
+BenchmarkBloomFilterAdd-8    53,940,720      44 ns/op      0 B/op   0 allocs/op  ✅
+BenchmarkSSTableGet-8           972,285    2193 ns/op   4112 B/op   2 allocs/op
+BenchmarkSSTableGetMiss-8    36,227,282      65 ns/op     49 B/op   0 allocs/op  ✅
 ```
 
 ---
@@ -223,11 +290,12 @@ BenchmarkSSTableGetMiss-8     36,227,282     64.7 ns/op    49 B/op    0 allocs/o
 ## Design Constraints
 
 - **Zero external dependencies** — only the Go standard library
-- **Zero-allocation read paths** — verified via `-benchmem` and escape analysis
+- **Zero-allocation read paths** — `DB.Get` from MemTable: 0 allocs/op
 - **Explicit error handling** — wrapped errors (`fmt.Errorf("...: %w", err)`), no panics
-- **Endianness** — `binary.LittleEndian` throughout (matches x86/ARM LE architectures)
-- **Durability** — WAL with CRC-32C checksums + fsync guarantees
-- **Concurrency** — `sync.RWMutex` for reader-writer separation, `sync/atomic` for counters
+- **Endianness** — `binary.LittleEndian` throughout (matches x86/ARM LE)
+- **Durability** — WAL with CRC-32C checksums + fsync
+- **Concurrency** — `sync.Mutex` for writes, `sync.RWMutex` for state, `sync/atomic` for counters
+- **Goroutine safety** — `context.Context` cancellation + `sync.WaitGroup` for zero goroutine leaks
 
 ---
 
@@ -245,8 +313,12 @@ LSM-Tree/
 ├── sstable_builder.go     # SSTable writer (Phase 3)
 ├── sstable_reader.go      # SSTable reader (Phase 3)
 ├── sstable_test.go        # 11 tests + 5 benchmarks
+├── db.go                  # Core engine (Phase 4)
+├── db_test.go             # 11 tests + 4 benchmarks
 └── README.md              # This file
 ```
+
+**Total: 48 tests, 20 benchmarks**, all passing with `-race` detector.
 
 ---
 
