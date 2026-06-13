@@ -268,40 +268,6 @@ go build -gcflags="-m" ./... 2>&1 | grep -v "test"
 
 ---
 
-## Benchmark Results
-
-All benchmarks on **Intel Core i5-10300H @ 2.50GHz**, Linux (WSL2).
-
-### Core Engine (Phase 4)
-```
-BenchmarkDBPut-8              7,345,558     324 ns/op     48 B/op   1 allocs/op
-BenchmarkDBGet-8             11,909,064     222 ns/op      0 B/op   0 allocs/op  ✅
-BenchmarkDBGetFromSSTable-8     439,791    4945 ns/op   4091 B/op   1 allocs/op
-BenchmarkDBPutParallel-8      3,176,728     771 ns/op     71 B/op   4 allocs/op
-```
-
-### WAL (Phase 1)
-```
-BenchmarkWALAppend-8         23,161,273     166 ns/op      0 B/op   0 allocs/op  ✅
-BenchmarkWALAppendBatch-8         1,136   3.28 ms/op   29.0 MB/s    0 allocs/op
-BenchmarkWALReplay-8                284   12.8 ms/op  523.8 MB/s
-```
-
-### MemTable / Skip List (Phase 2)
-```
-BenchmarkSkipListGet-8       14,491,893     162 ns/op      0 B/op   0 allocs/op  ✅
-BenchmarkSkipListGetParallel 45,977,524      51 ns/op      0 B/op   0 allocs/op  ✅
-BenchmarkMemTablePut-8       20,504,230     108 ns/op     48 B/op   1 allocs/op
-```
-
-### SSTable & Bloom (Phase 3)
-```
-BenchmarkBloomFilterAdd-8    53,940,720      44 ns/op      0 B/op   0 allocs/op  ✅
-BenchmarkSSTableGet-8           972,285    2193 ns/op   4112 B/op   2 allocs/op
-BenchmarkSSTableGetMiss-8    36,227,282      65 ns/op     49 B/op   0 allocs/op  ✅
-```
-
----
 
 ## Design Constraints
 
