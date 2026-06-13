@@ -59,11 +59,11 @@ func (db *DB) runCompaction() {
 	// BuildSSTable expects a MemTableIterator, but we have a generic Iterator.
 	// Wait, BuildSSTable takes *MemTableIterator specifically.
 	// We should change BuildSSTable to accept the Iterator interface instead!
-	
+
 	// Let's create the new SSTable.
 	seq := db.sstSeq.Add(1)
 	newSSTPath := filepath.Join(db.opts.Dir, fmt.Sprintf("sst_%06d.sst", seq))
-	
+
 	// For tombstone purging during a full compaction, we can drop tombstones
 	// because there are no older files that could contain the shadowed value.
 	// We will wrap the merge iterator to drop tombstones.
@@ -100,14 +100,14 @@ func (db *DB) runCompaction() {
 	// the tables we actually compacted. The newest tables are at the front.
 	// db.sstables = [flushed_new_1, flushed_new_2, compacted_1, compacted_2, ...]
 	// We replace the suffix of db.sstables that matches tablesToCompact.
-	
+
 	// Identify how many new tables were added during compaction.
 	newFlushes := len(db.sstables) - len(tablesToCompact)
-	
+
 	newSSTables := make([]*SSTableReader, 0, newFlushes+1)
 	newSSTables = append(newSSTables, db.sstables[:newFlushes]...) // keep newly flushed tables
-	newSSTables = append(newSSTables, newReader) // add the single compacted table
-	
+	newSSTables = append(newSSTables, newReader)                   // add the single compacted table
+
 	db.sstables = newSSTables
 	db.stateMu.Unlock()
 
@@ -135,9 +135,9 @@ func (p *purgeIterator) Next() {
 	p.it.Next()
 	p.advanceToValid()
 }
-func (p *purgeIterator) Key() []byte { return p.it.Key() }
-func (p *purgeIterator) Value() []byte { return p.it.Value() }
+func (p *purgeIterator) Key() []byte       { return p.it.Key() }
+func (p *purgeIterator) Value() []byte     { return p.it.Value() }
 func (p *purgeIterator) Timestamp() uint64 { return p.it.Timestamp() }
-func (p *purgeIterator) Tombstone() bool { return p.it.Tombstone() }
-func (p *purgeIterator) Error() error { return p.it.Error() }
-func (p *purgeIterator) Close() error { return p.it.Close() }
+func (p *purgeIterator) Tombstone() bool   { return p.it.Tombstone() }
+func (p *purgeIterator) Error() error      { return p.it.Error() }
+func (p *purgeIterator) Close() error      { return p.it.Close() }

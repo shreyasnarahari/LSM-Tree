@@ -10,14 +10,14 @@ type mockIterator struct {
 	idx     int
 }
 
-func (m *mockIterator) Valid() bool { return m.idx < len(m.entries) }
-func (m *mockIterator) Next()       { m.idx++ }
-func (m *mockIterator) Key() []byte { return m.entries[m.idx].Key }
-func (m *mockIterator) Value() []byte { return m.entries[m.idx].Value }
+func (m *mockIterator) Valid() bool       { return m.idx < len(m.entries) }
+func (m *mockIterator) Next()             { m.idx++ }
+func (m *mockIterator) Key() []byte       { return m.entries[m.idx].Key }
+func (m *mockIterator) Value() []byte     { return m.entries[m.idx].Value }
 func (m *mockIterator) Timestamp() uint64 { return m.entries[m.idx].Timestamp }
-func (m *mockIterator) Tombstone() bool { return m.entries[m.idx].Tombstone }
-func (m *mockIterator) Error() error { return nil }
-func (m *mockIterator) Close() error { return nil }
+func (m *mockIterator) Tombstone() bool   { return m.entries[m.idx].Tombstone }
+func (m *mockIterator) Error() error      { return nil }
+func (m *mockIterator) Close() error      { return nil }
 
 func TestMergeIteratorSimple(t *testing.T) {
 	it1 := &mockIterator{
@@ -88,7 +88,7 @@ func TestMergeIteratorShadowing(t *testing.T) {
 	for merge.Valid() {
 		gotK, gotV, gotTomb := string(merge.Key()), string(merge.Value()), merge.Tombstone()
 		want := wants[idx]
-		
+
 		if gotK != want.k || gotV != want.v || gotTomb != want.tomb {
 			t.Fatalf("step %d: got (%q, %q, %v), want (%q, %q, %v)",
 				idx, gotK, gotV, gotTomb, want.k, want.v, want.tomb)
@@ -108,7 +108,7 @@ func TestMergeIteratorMultiShadow(t *testing.T) {
 	it3 := &mockIterator{entries: []WALEntry{{Key: []byte("a"), Value: []byte("3")}}}
 
 	merge := NewMergeIterator([]Iterator{it1, it2, it3})
-	
+
 	if !merge.Valid() || string(merge.Key()) != "a" || string(merge.Value()) != "1" {
 		t.Fatalf("got %q, want '1'", merge.Value())
 	}

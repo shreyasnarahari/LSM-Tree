@@ -119,9 +119,7 @@ func (m *MergeIterator) Close() error {
 	return firstErr
 }
 
-// ---------------------------------------------------------------------------
 // min-heap implementation
-// ---------------------------------------------------------------------------
 
 type heapNode struct {
 	it  Iterator

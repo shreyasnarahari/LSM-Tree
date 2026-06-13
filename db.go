@@ -11,9 +11,7 @@ import (
 	"time"
 )
 
-// ---------------------------------------------------------------------------
 // Configuration
-// ---------------------------------------------------------------------------
 
 // DBOptions controls engine behaviour.
 type DBOptions struct {
@@ -43,9 +41,7 @@ func (o *DBOptions) memTableSize() int64 {
 	return 4 * 1024 * 1024 // 4 MB
 }
 
-// ---------------------------------------------------------------------------
 // DB — the core LSM-Tree engine
-// ---------------------------------------------------------------------------
 
 // DB is a thread-safe key-value storage engine backed by an LSM Tree.
 //
@@ -68,10 +64,10 @@ type DB struct {
 	// reads; the flush goroutine holds Lock for pointer swaps.
 	stateMu sync.RWMutex
 
-	wal       *WAL
-	active    *MemTable   // current writable MemTable
-	immutables []*MemTable // MemTables pending flush (newest first)
-	sstables  []*SSTableReader // L0 SSTables (newest first)
+	wal        *WAL
+	active     *MemTable        // current writable MemTable
+	immutables []*MemTable      // MemTables pending flush (newest first)
+	sstables   []*SSTableReader // L0 SSTables (newest first)
 
 	// sstSeq is an atomic counter for generating unique SSTable filenames.
 	sstSeq atomic.Uint64
@@ -112,13 +108,13 @@ func Open(opts DBOptions) (*DB, error) {
 		cancel:       cancel,
 	}
 
-	// --- load existing SSTables ---
+	// load existing SSTables
 	if err := db.loadSSTables(); err != nil {
 		cancel()
 		return nil, fmt.Errorf("db: load sstables: %w", err)
 	}
 
-	// --- replay WAL ---
+	// replay WAL
 	walPath := filepath.Join(opts.Dir, "wal")
 	if err := db.replayWAL(walPath); err != nil {
 		db.closeSSTables()
@@ -126,7 +122,7 @@ func Open(opts DBOptions) (*DB, error) {
 		return nil, fmt.Errorf("db: replay wal: %w", err)
 	}
 
-	// --- open WAL for new writes ---
+	// open WAL for new writes
 	wal, err := OpenWAL(walPath)
 	if err != nil {
 		db.closeSSTables()
@@ -135,7 +131,7 @@ func Open(opts DBOptions) (*DB, error) {
 	}
 	db.wal = wal
 
-	// --- start background flush goroutine ---
+	// start background flush goroutines
 	db.wg.Add(2)
 	go db.flushLoop()
 	go db.compactionLoop()
@@ -143,9 +139,7 @@ func Open(opts DBOptions) (*DB, error) {
 	return db, nil
 }
 
-// ---------------------------------------------------------------------------
 // Write path
-// ---------------------------------------------------------------------------
 
 // Put inserts or updates a key-value pair.
 //
@@ -256,9 +250,7 @@ func (db *DB) rotateMemTable() error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // Read path
-// ---------------------------------------------------------------------------
 
 // Get retrieves the value associated with key.
 //
@@ -316,9 +308,7 @@ func (db *DB) Get(key []byte) ([]byte, error) {
 // has been deleted (tombstoned).
 var ErrKeyNotFound = fmt.Errorf("db: key not found")
 
-// ---------------------------------------------------------------------------
 // Background flush
-// ---------------------------------------------------------------------------
 
 // flushLoop is the background goroutine that flushes immutable MemTables
 // to SSTables on disk.
@@ -395,9 +385,7 @@ func (db *DB) flushAllImmutables() {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Startup: load SSTables and replay WAL
-// ---------------------------------------------------------------------------
 
 // loadSSTables scans the data directory for existing SSTable files and
 // opens them. Files are sorted by name (lexicographic, which matches
@@ -470,9 +458,7 @@ func (db *DB) replayWAL(path string) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // Shutdown
-// ---------------------------------------------------------------------------
 
 // Close gracefully shuts down the database:
 //  1. Cancels the context to stop the background flush goroutine.
@@ -502,9 +488,7 @@ func (db *DB) closeSSTables() {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Utilities
-// ---------------------------------------------------------------------------
 
 // SSTCount returns the number of L0 SSTables (for testing/monitoring).
 func (db *DB) SSTCount() int {

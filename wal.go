@@ -41,9 +41,7 @@ const (
 // (SSE 4.2 on x86-64, CRC extensions on ARM).
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
-// ---------------------------------------------------------------------------
 // WALEntry – deserialized record returned during recovery replay
-// ---------------------------------------------------------------------------
 
 // WALEntry represents a single record read back from the WAL.
 type WALEntry struct {
@@ -53,9 +51,7 @@ type WALEntry struct {
 	Tombstone bool
 }
 
-// ---------------------------------------------------------------------------
 // WAL – append-only durable log
-// ---------------------------------------------------------------------------
 
 // WAL is an append-only Write-Ahead Log that provides strict durability.
 //
@@ -112,7 +108,7 @@ func OpenWAL(path string) (*WAL, error) {
 // The fixed header is written into the pre-allocated scratch array,
 // and key/value bytes are forwarded directly from the caller's slices.
 func (w *WAL) Append(key, value []byte, tombstone bool) error {
-	// --- input validation (format constraints) ---
+	// format constraints
 	if len(key) > maxKeySize {
 		return fmt.Errorf("wal: key length %d exceeds max %d", len(key), maxKeySize)
 	}
@@ -120,7 +116,7 @@ func (w *WAL) Append(key, value []byte, tombstone bool) error {
 		return fmt.Errorf("wal: value length %d exceeds max %d", len(value), maxValueSize)
 	}
 
-	// --- build header in scratch[4:19] (skip the CRC slot) ---
+	// build header in scratch[4:19] (skip the CRC slot)
 	binary.LittleEndian.PutUint64(w.scratch[4:12], uint64(time.Now().UnixNano()))
 
 	if tombstone {
@@ -132,21 +128,21 @@ func (w *WAL) Append(key, value []byte, tombstone bool) error {
 	binary.LittleEndian.PutUint16(w.scratch[13:15], uint16(len(key)))
 	binary.LittleEndian.PutUint32(w.scratch[15:19], uint32(len(value)))
 
-	// --- compute CRC-32C over header[4:19] + key + value ---
+	// compute CRC-32C over header[4:19] + key + value
 	crc := crc32.Update(0, crc32cTable, w.scratch[4:19])
 	crc = crc32.Update(crc, crc32cTable, key)
 	crc = crc32.Update(crc, crc32cTable, value)
 	binary.LittleEndian.PutUint32(w.scratch[0:4], crc)
 
-	// --- write header ---
+	// write header
 	if _, err := w.writer.Write(w.scratch[:]); err != nil {
 		return fmt.Errorf("wal: write header: %w", err)
 	}
-	// --- write key (zero-copy from caller) ---
+	// write key
 	if _, err := w.writer.Write(key); err != nil {
 		return fmt.Errorf("wal: write key: %w", err)
 	}
-	// --- write value (zero-copy from caller) ---
+	// write value
 	if _, err := w.writer.Write(value); err != nil {
 		return fmt.Errorf("wal: write value: %w", err)
 	}
@@ -192,9 +188,7 @@ func (w *WAL) Size() (int64, error) {
 	return info.Size() + int64(w.writer.Buffered()), nil
 }
 
-// ---------------------------------------------------------------------------
 // WALIterator – sequential recovery replay with torn-write detection
-// ---------------------------------------------------------------------------
 
 // WALIterator reads WAL records sequentially for crash recovery.
 //
@@ -243,7 +237,7 @@ func NewWALIterator(path string) (*WALIterator, error) {
 func (it *WALIterator) Next() (*WALEntry, error) {
 	recordStart := it.offset
 
-	// --- 1. read fixed header ---
+	// 1. read fixed header
 	_, err := io.ReadFull(it.reader, it.header[:])
 	if err == io.EOF {
 		return nil, nil // clean EOF
@@ -259,14 +253,14 @@ func (it *WALIterator) Next() (*WALEntry, error) {
 		return nil, fmt.Errorf("wal: read header at %d: %w", recordStart, err)
 	}
 
-	// --- 2. parse header fields ---
+	// 2. parse header fields
 	storedCRC := binary.LittleEndian.Uint32(it.header[0:4])
 	timestamp := binary.LittleEndian.Uint64(it.header[4:12])
 	tombstone := it.header[12] != 0
 	keySize := int(binary.LittleEndian.Uint16(it.header[13:15]))
 	valueSize := int(binary.LittleEndian.Uint32(it.header[15:19]))
 
-	// --- 3. read variable-length payload ---
+	// 3. read variable-length payload
 	payloadLen := keySize + valueSize
 	payload := make([]byte, payloadLen) // 1 alloc: key+value backing array
 
@@ -283,7 +277,7 @@ func (it *WALIterator) Next() (*WALEntry, error) {
 		}
 	}
 
-	// --- 4. verify CRC-32C ---
+	// 4. verify CRC-32C
 	computed := crc32.Update(0, crc32cTable, it.header[4:19])
 	computed = crc32.Update(computed, crc32cTable, payload)
 	if storedCRC != computed {
@@ -293,7 +287,7 @@ func (it *WALIterator) Next() (*WALEntry, error) {
 		return nil, nil
 	}
 
-	// --- 5. advance offset past this valid record ---
+	// 5. advance offset past this valid record
 	it.offset = recordStart + int64(walHeaderSize) + int64(payloadLen)
 
 	return &WALEntry{

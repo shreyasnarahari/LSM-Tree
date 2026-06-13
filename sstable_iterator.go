@@ -8,11 +8,11 @@ import (
 
 // SSTableIterator sequentially traverses all entries in an SSTable.
 type SSTableIterator struct {
-	reader     *SSTableReader
-	blockIdx   int
-	blockData  []byte
-	blockOff   int
-	numEntries uint32
+	reader      *SSTableReader
+	blockIdx    int
+	blockData   []byte
+	blockOff    int
+	numEntries  uint32
 	entriesRead uint32
 
 	// current entry state

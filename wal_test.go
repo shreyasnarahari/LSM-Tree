@@ -10,9 +10,7 @@ import (
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
 // helpers
-// ---------------------------------------------------------------------------
 
 // walPath returns a fresh WAL file path inside t.TempDir().
 func walPath(t testing.TB) string {
@@ -65,9 +63,7 @@ func fileSize(t testing.TB, path string) int64 {
 	return info.Size()
 }
 
-// ---------------------------------------------------------------------------
 // Unit tests
-// ---------------------------------------------------------------------------
 
 // TestWALAppendAndReplay writes N entries, closes, replays, and verifies
 // every key/value/timestamp roundtrips correctly.
@@ -260,9 +256,9 @@ func TestWALTornWritePayload(t *testing.T) {
 	}
 	var hdr [walHeaderSize]byte
 	binary.LittleEndian.PutUint64(hdr[4:12], 999)  // fake timestamp
-	hdr[12] = 0                                      // not tombstone
-	binary.LittleEndian.PutUint16(hdr[13:15], 100)   // keySize = 100
-	binary.LittleEndian.PutUint32(hdr[15:19], 200)   // valueSize = 200
+	hdr[12] = 0                                    // not tombstone
+	binary.LittleEndian.PutUint16(hdr[13:15], 100) // keySize = 100
+	binary.LittleEndian.PutUint32(hdr[15:19], 200) // valueSize = 200
 	// CRC doesn't matter – we won't even get to the CRC check because
 	// the payload read will be short.
 	binary.LittleEndian.PutUint32(hdr[0:4], 0xDEADBEEF)
@@ -487,9 +483,7 @@ func TestWALCRC32CIntegrity(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Benchmarks
-// ---------------------------------------------------------------------------
 
 // BenchmarkWALAppend measures the cost of a single Append (no Sync).
 // Target: 0 allocs/op on the hot path.

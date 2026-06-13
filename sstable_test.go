@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
 // Bloom filter tests
-// ---------------------------------------------------------------------------
 
 func TestBloomFilterBasic(t *testing.T) {
 	bf := NewBloomFilter(1000, 0.01)
@@ -70,9 +68,7 @@ func TestBloomFilterSerialization(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // SSTable build + read round-trip tests
-// ---------------------------------------------------------------------------
 
 // buildTestSSTable populates a MemTable with n entries and flushes it to an SSTable.
 func buildTestSSTable(t testing.TB, dir string, name string, n int) string {
@@ -319,9 +315,7 @@ func TestSSTableMinKey(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Benchmarks
-// ---------------------------------------------------------------------------
 
 func BenchmarkBloomFilterAdd(b *testing.B) {
 	bf := NewBloomFilter(b.N, 0.01)

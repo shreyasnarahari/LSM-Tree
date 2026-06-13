@@ -83,9 +83,7 @@ func (bf *BloomFilter) hash(key []byte) (uint32, uint32) {
 	return uint32(sum), uint32(sum >> 32)
 }
 
-// ---------------------------------------------------------------------------
 // Serialization
-// ---------------------------------------------------------------------------
 
 // bloomHeaderSize is [NumBits uint32][NumHashes uint8] = 5 bytes.
 const bloomHeaderSize = 5

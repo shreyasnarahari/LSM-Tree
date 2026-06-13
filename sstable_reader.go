@@ -191,9 +191,7 @@ func (r *SSTableReader) BlockCount() int {
 	return len(r.index)
 }
 
-// ---------------------------------------------------------------------------
 // Index deserialization
-// ---------------------------------------------------------------------------
 
 func unmarshalIndex(data []byte) ([]indexEntry, error) {
 	if len(data) < 4 {

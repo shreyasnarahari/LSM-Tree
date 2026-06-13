@@ -8,9 +8,7 @@ import (
 	"os"
 )
 
-// ---------------------------------------------------------------------------
 // SSTable on-disk constants
-// ---------------------------------------------------------------------------
 
 const (
 	// blockSize is the target data block size, aligned to the OS page size
@@ -31,9 +29,7 @@ const (
 	sstMagic uint64 = 0x4C534D5401
 )
 
-// ---------------------------------------------------------------------------
 // Index entry (in-memory representation)
-// ---------------------------------------------------------------------------
 
 type indexEntry struct {
 	startKey []byte
@@ -41,9 +37,7 @@ type indexEntry struct {
 	length   uint64
 }
 
-// ---------------------------------------------------------------------------
 // SSTableBuilder — writes a sorted iterator to an immutable SSTable file
-// ---------------------------------------------------------------------------
 
 // BuildSSTable consumes all entries from iter (which must yield keys in
 // strictly ascending lexicographic order) and writes a complete SSTable to
@@ -118,7 +112,7 @@ func BuildSSTable(path string, iter Iterator, expectedItems int) error {
 		return nil
 	}
 
-	// --- write data blocks ---
+	// write data blocks
 	for iter.Valid() {
 		key := iter.Key()
 		value := iter.Value()
@@ -162,7 +156,7 @@ func BuildSSTable(path string, iter Iterator, expectedItems int) error {
 		return err
 	}
 
-	// --- write index block ---
+	// write index block
 	indexOffset := fileOffset
 	indexData := marshalIndex(index)
 	if _, err := w.Write(indexData); err != nil {
@@ -170,7 +164,7 @@ func BuildSSTable(path string, iter Iterator, expectedItems int) error {
 	}
 	fileOffset += int64(len(indexData))
 
-	// --- write bloom filter block ---
+	// write bloom filter block
 	bloomOffset := fileOffset
 	bloomData := bloom.MarshalBinary()
 	if _, err := w.Write(bloomData); err != nil {
@@ -178,7 +172,7 @@ func BuildSSTable(path string, iter Iterator, expectedItems int) error {
 	}
 	fileOffset += int64(len(bloomData))
 
-	// --- write footer ---
+	// write footer
 	var footer [footerSize]byte
 	binary.LittleEndian.PutUint64(footer[0:8], uint64(indexOffset))
 	binary.LittleEndian.PutUint64(footer[8:16], uint64(len(indexData)))

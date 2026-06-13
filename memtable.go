@@ -73,9 +73,7 @@ func (m *MemTable) Len() int {
 	return m.list.Len()
 }
 
-// ---------------------------------------------------------------------------
 // MemTableIterator — ordered traversal for SSTable flushing
-// ---------------------------------------------------------------------------
 
 // MemTableIterator walks the MemTable entries in sorted key order.
 // It is designed to be used on immutable (rotated) MemTables during

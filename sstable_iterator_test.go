@@ -16,7 +16,7 @@ func TestSSTableIterator(t *testing.T) {
 		key := []byte(fmt.Sprintf("key-%06d", i))
 		val := []byte(fmt.Sprintf("val-%06d", i))
 		tomb := i%10 == 0 // every 10th is a tombstone
-		
+
 		if tomb {
 			mt.PutWithTimestamp(key, nil, uint64(i), true)
 		} else {

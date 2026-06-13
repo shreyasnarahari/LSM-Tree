@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
 // Skip List — internal correctness tests
-// ---------------------------------------------------------------------------
 
 func TestSkipListPutGet(t *testing.T) {
 	sl := newSkipList()
@@ -121,9 +119,7 @@ func TestSkipListSizeTracking(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // MemTable — public API tests
-// ---------------------------------------------------------------------------
 
 func TestMemTablePutGet(t *testing.T) {
 	mt := NewMemTable(4 * 1024 * 1024) // 4 MB threshold
@@ -269,9 +265,7 @@ func TestMemTableKeyCopySafety(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // Concurrency tests
-// ---------------------------------------------------------------------------
 
 func TestSkipListConcurrentReads(t *testing.T) {
 	sl := newSkipList()
@@ -337,9 +331,7 @@ func TestSkipListConcurrentWriteRead(t *testing.T) {
 	wg.Wait()
 }
 
-// ---------------------------------------------------------------------------
 // Benchmarks
-// ---------------------------------------------------------------------------
 
 func BenchmarkSkipListPut(b *testing.B) {
 	sl := newSkipList()
