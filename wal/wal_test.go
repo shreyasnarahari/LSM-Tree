@@ -256,9 +256,9 @@ func TestWALTornWritePayload(t *testing.T) {
 	}
 	var hdr [HeaderSize]byte
 	binary.LittleEndian.PutUint64(hdr[4:12], 999)  // fake timestamp
-	hdr[12] = 0                                     // not tombstone
-	binary.LittleEndian.PutUint16(hdr[13:15], 100)  // keySize = 100
-	binary.LittleEndian.PutUint32(hdr[15:19], 200)  // valueSize = 200
+	hdr[12] = 0                                    // not tombstone
+	binary.LittleEndian.PutUint16(hdr[13:15], 100) // keySize = 100
+	binary.LittleEndian.PutUint32(hdr[15:19], 200) // valueSize = 200
 	// CRC doesn't matter – we won't even get to the CRC check because
 	// the payload read will be short.
 	binary.LittleEndian.PutUint32(hdr[0:4], 0xDEADBEEF)
