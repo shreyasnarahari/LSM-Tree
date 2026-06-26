@@ -1,4 +1,4 @@
-package lsmtree
+package db
 
 import (
 	"context"
@@ -9,37 +9,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/shreyas/lsmtree/memtable"
+	"github.com/shreyas/lsmtree/sstable"
+	"github.com/shreyas/lsmtree/wal"
 )
-
-// Configuration
-
-// DBOptions controls engine behaviour.
-type DBOptions struct {
-	// Dir is the directory for all data files (WAL, SSTables).
-	Dir string
-
-	// MemTableSize is the approximate byte threshold at which the active
-	// MemTable is rotated to immutable and scheduled for flushing.
-	// Default: 4 MB.
-	MemTableSize int64
-
-	// SyncOnWrite controls whether every Put/Delete call triggers an
-	// fsync on the WAL. When true, each mutation is durable before the
-	// call returns (highest safety). When false, the WAL is fsynced
-	// periodically or on Close (higher throughput, small data-loss window).
-	SyncOnWrite bool
-
-	// CompactionThreshold is the number of L0 SSTables that triggers a compaction.
-	// Default: 4.
-	CompactionThreshold int
-}
-
-func (o *DBOptions) memTableSize() int64 {
-	if o.MemTableSize > 0 {
-		return o.MemTableSize
-	}
-	return 4 * 1024 * 1024 // 4 MB
-}
 
 // DB — the core LSM-Tree engine
 
@@ -64,10 +38,10 @@ type DB struct {
 	// reads; the flush goroutine holds Lock for pointer swaps.
 	stateMu sync.RWMutex
 
-	wal        *WAL
-	active     *MemTable        // current writable MemTable
-	immutables []*MemTable      // MemTables pending flush (newest first)
-	sstables   []*SSTableReader // L0 SSTables (newest first)
+	wal        *wal.WAL
+	active     *memtable.MemTable   // current writable MemTable
+	immutables []*memtable.MemTable // MemTables pending flush (newest first)
+	sstables   []*sstable.Reader    // L0 SSTables (newest first)
 
 	// sstSeq is an atomic counter for generating unique SSTable filenames.
 	sstSeq atomic.Uint64
@@ -101,7 +75,7 @@ func Open(opts DBOptions) (*DB, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	db := &DB{
 		opts:         opts,
-		active:       NewMemTable(opts.memTableSize()),
+		active:       memtable.New(opts.memTableSize()),
 		flushCh:      make(chan struct{}, 1),
 		compactionCh: make(chan struct{}, 1),
 		ctx:          ctx,
@@ -123,7 +97,7 @@ func Open(opts DBOptions) (*DB, error) {
 	}
 
 	// open WAL for new writes
-	wal, err := OpenWAL(walPath)
+	wal, err := wal.Open(walPath)
 	if err != nil {
 		db.closeSSTables()
 		cancel()
@@ -214,7 +188,7 @@ func (db *DB) rotateMemTable() error {
 	}
 
 	frozen := db.active
-	newActive := NewMemTable(db.opts.memTableSize())
+	newActive := memtable.New(db.opts.memTableSize())
 
 	// Close old WAL and create a new one.
 	if err := db.wal.Close(); err != nil {
@@ -228,7 +202,7 @@ func (db *DB) rotateMemTable() error {
 	// can be replayed. For simplicity in this phase, we overwrite the
 	// WAL file. A production engine would use WAL rotation with
 	// sequence numbers.
-	newWAL, err := OpenWAL(walPath)
+	newWAL, err := wal.Open(walPath)
 	if err != nil {
 		return fmt.Errorf("open new wal: %w", err)
 	}
@@ -237,7 +211,7 @@ func (db *DB) rotateMemTable() error {
 	db.stateMu.Lock()
 	db.active = newActive
 	db.wal = newWAL
-	db.immutables = append([]*MemTable{frozen}, db.immutables...)
+	db.immutables = append([]*memtable.MemTable{frozen}, db.immutables...)
 	db.stateMu.Unlock()
 
 	// Signal flush (non-blocking: if a flush is already pending, the
@@ -355,15 +329,15 @@ func (db *DB) flushAllImmutables() {
 		seq := db.sstSeq.Add(1)
 		sstPath := filepath.Join(db.opts.Dir, fmt.Sprintf("sst_%06d.sst", seq))
 
-		iter := oldest.Iterator()
-		if err := BuildSSTable(sstPath, iter, oldest.Len()); err != nil {
+		iter := oldest.NewIterator()
+		if err := sstable.Build(sstPath, iter, oldest.Len()); err != nil {
 			// Log error but don't crash — retry on next trigger.
 			// In production, this would use a proper logger.
 			fmt.Fprintf(os.Stderr, "db: flush error: %v\n", err)
 			return
 		}
 
-		reader, err := OpenSSTable(sstPath)
+		reader, err := sstable.Open(sstPath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "db: open flushed sst: %v\n", err)
 			return
@@ -372,7 +346,7 @@ func (db *DB) flushAllImmutables() {
 		// Atomic state update: add SSTable, remove the flushed immutable.
 		db.stateMu.Lock()
 		// Prepend to sstables (newest first).
-		db.sstables = append([]*SSTableReader{reader}, db.sstables...)
+		db.sstables = append([]*sstable.Reader{reader}, db.sstables...)
 		// Remove the oldest immutable (last element).
 		db.immutables = db.immutables[:len(db.immutables)-1]
 		db.stateMu.Unlock()
@@ -417,7 +391,7 @@ func (db *DB) loadSSTables() error {
 
 	// Open all SSTables (store newest-first for read path ordering).
 	for i := len(paths) - 1; i >= 0; i-- {
-		reader, err := OpenSSTable(paths[i])
+		reader, err := sstable.Open(paths[i])
 		if err != nil {
 			return fmt.Errorf("open %q: %w", paths[i], err)
 		}
@@ -433,7 +407,7 @@ func (db *DB) replayWAL(path string) error {
 		return nil // fresh DB, nothing to replay
 	}
 
-	it, err := NewWALIterator(path)
+	it, err := wal.NewIterator(path)
 	if err != nil {
 		return fmt.Errorf("open wal iterator: %w", err)
 	}

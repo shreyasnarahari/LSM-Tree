@@ -1,9 +1,13 @@
-package lsmtree
+package db
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/shreyas/lsmtree/compaction"
+	"github.com/shreyas/lsmtree/iterator"
+	"github.com/shreyas/lsmtree/sstable"
 )
 
 // compactionLoop is the background goroutine that merges multiple SSTables
@@ -40,16 +44,16 @@ func (db *DB) runCompaction() {
 	// For this implementation, we do a "full" compaction of all L0 tables.
 	// Grab the current snapshot of SSTables to compact.
 	db.stateMu.RLock()
-	tablesToCompact := make([]*SSTableReader, len(db.sstables))
+	tablesToCompact := make([]*sstable.Reader, len(db.sstables))
 	copy(tablesToCompact, db.sstables) // newest first
 	db.stateMu.RUnlock()
 
-	iters := make([]Iterator, 0, len(tablesToCompact))
+	iters := make([]iterator.Iterator, 0, len(tablesToCompact))
 	for _, sst := range tablesToCompact {
-		iters = append(iters, sst.Iterator())
+		iters = append(iters, sst.NewIterator())
 	}
 
-	mergeIt := NewMergeIterator(iters)
+	mergeIt := compaction.NewMergeIterator(iters)
 	defer mergeIt.Close()
 
 	seq := db.sstSeq.Add(1)
@@ -58,10 +62,7 @@ func (db *DB) runCompaction() {
 	// For tombstone purging during a full compaction, we can drop tombstones
 	// because there are no older files that could contain the shadowed value.
 	// We will wrap the merge iterator to drop tombstones.
-	purgeIt := &purgeIterator{
-		it: mergeIt,
-	}
-	purgeIt.advanceToValid()
+	purgeIt := compaction.NewPurgeIterator(mergeIt)
 
 	// We don't know the exact count for the bloom filter, but we can estimate
 	// based on the old tables. Let's sum the block counts (rough proxy).
@@ -73,13 +74,13 @@ func (db *DB) runCompaction() {
 		expectedItems += sst.BlockCount() * 100
 	}
 
-	if err := BuildSSTable(newSSTPath, purgeIt, expectedItems); err != nil {
+	if err := sstable.Build(newSSTPath, purgeIt, expectedItems); err != nil {
 		fmt.Fprintf(os.Stderr, "db: compaction build error: %v\n", err)
 		return
 	}
 
 	// 4. Open the new SSTable.
-	newReader, err := OpenSSTable(newSSTPath)
+	newReader, err := sstable.Open(newSSTPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "db: open compacted sst: %v\n", err)
 		return
@@ -95,7 +96,7 @@ func (db *DB) runCompaction() {
 	// Identify how many new tables were added during compaction.
 	newFlushes := len(db.sstables) - len(tablesToCompact)
 
-	newSSTables := make([]*SSTableReader, 0, newFlushes+1)
+	newSSTables := make([]*sstable.Reader, 0, newFlushes+1)
 	newSSTables = append(newSSTables, db.sstables[:newFlushes]...) // keep newly flushed tables
 	newSSTables = append(newSSTables, newReader)                   // add the single compacted table
 
@@ -108,27 +109,3 @@ func (db *DB) runCompaction() {
 		os.Remove(sst.Path())
 	}
 }
-
-// purgeIterator wraps an Iterator and drops all tombstones.
-// It is only safe to use during a FULL compaction.
-type purgeIterator struct {
-	it Iterator
-}
-
-func (p *purgeIterator) advanceToValid() {
-	for p.it.Valid() && p.it.Tombstone() {
-		p.it.Next()
-	}
-}
-
-func (p *purgeIterator) Valid() bool { return p.it.Valid() }
-func (p *purgeIterator) Next() {
-	p.it.Next()
-	p.advanceToValid()
-}
-func (p *purgeIterator) Key() []byte       { return p.it.Key() }
-func (p *purgeIterator) Value() []byte     { return p.it.Value() }
-func (p *purgeIterator) Timestamp() uint64 { return p.it.Timestamp() }
-func (p *purgeIterator) Tombstone() bool   { return p.it.Tombstone() }
-func (p *purgeIterator) Error() error      { return p.it.Error() }
-func (p *purgeIterator) Close() error      { return p.it.Close() }
