@@ -206,11 +206,11 @@ package main
 import (
     "fmt"
     "log"
-    "lsmtree"
+    "github.com/shreyas/lsmtree/db"
 )
 
 func main() {
-    db, err := lsmtree.Open(lsmtree.DBOptions{
+    database, err := db.Open(db.DBOptions{
         Dir:          "./data",
         MemTableSize: 4 * 1024 * 1024, // 4 MB
         SyncOnWrite:  true,
@@ -218,20 +218,20 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    defer db.Close()
+    defer database.Close()
 
     // Write
-    db.Put([]byte("hello"), []byte("world"))
+    database.Put([]byte("hello"), []byte("world"))
 
     // Read
-    val, err := db.Get([]byte("hello"))
+    val, err := database.Get([]byte("hello"))
     if err != nil {
         log.Fatal(err)
     }
     fmt.Printf("hello = %s\n", val)
 
     // Delete
-    db.Delete([]byte("hello"))
+    database.Delete([]byte("hello"))
 }
 ```
 
@@ -286,17 +286,17 @@ go build -gcflags="-m" ./... 2>&1 | grep -v "test"
 ```
 LSM-Tree/
 ├── go.mod                 # Module: lsmtree (Go 1.22, zero deps)
-├── wal.go                 # Write-Ahead Log (Phase 1)
-├── wal_test.go            # 12 tests + 3 benchmarks
-├── skiplist.go            # Skip List data structure (Phase 2)
-├── memtable.go            # MemTable wrapper + iterator (Phase 2)
-├── memtable_test.go       # 14 tests + 8 benchmarks
-├── bloom.go               # Bloom Filter (Phase 3)
-├── sstable_builder.go     # SSTable writer (Phase 3)
-├── sstable_reader.go      # SSTable reader (Phase 3)
-├── sstable_test.go        # 11 tests + 5 benchmarks
-├── db.go                  # Core engine (Phase 4)
-├── db_test.go             # 11 tests + 4 benchmarks
+├── bloom/                 # Bloom Filter (Phase 3)
+├── compaction/            # Background compactions & min-heap merging (Phase 6)
+├── db/                    # Core engine facade & orchestration (Phase 4 & 7)
+├── internal/              # Core interfaces & binary encoding (Phase 1)
+├── iterator/              # Universal iterator interfaces (Phase 1)
+├── memtable/              # MemTable & Skip List (Phase 2)
+├── sstable/               # SSTable readers and builders (Phase 3)
+├── wal/                   # Write-Ahead Log (Phase 1)
+├── cmd/
+│   └── lsm/
+│       └── main.go        # REPL CLI interface (Phase 8)
 └── README.md              # This file
 ```
 
