@@ -23,7 +23,7 @@ var _ iterator.Iterator = (*Iterator)(nil)
 // The MemTable tracks its approximate memory consumption so the engine
 // can rotate it when a configurable size threshold is reached.
 type MemTable struct {
-	list      *skipList
+	tree      *redBlackTree
 	threshold int64 // size in bytes at which the table is considered full
 }
 
@@ -31,7 +31,7 @@ type MemTable struct {
 // memory consumption reaches threshold bytes.
 func New(threshold int64) *MemTable {
 	return &MemTable{
-		list:      newSkipList(),
+		tree:      newRedBlackTree(),
 		threshold: threshold,
 	}
 }
@@ -40,21 +40,21 @@ func New(threshold int64) *MemTable {
 // timestamp. To insert with an explicit timestamp (e.g., during WAL
 // replay), use PutWithTimestamp.
 func (m *MemTable) Put(key, value []byte) {
-	m.list.Put(key, value, uint64(time.Now().UnixNano()), false)
+	m.tree.Put(key, value, uint64(time.Now().UnixNano()), false)
 }
 
 // Delete inserts a tombstone marker for key. The tombstone shadows any
 // older value in deeper levels (immutable MemTables, SSTables) during
 // the read path.
 func (m *MemTable) Delete(key []byte) {
-	m.list.Put(key, nil, uint64(time.Now().UnixNano()), true)
+	m.tree.Put(key, nil, uint64(time.Now().UnixNano()), true)
 }
 
 // PutWithTimestamp inserts an entry with an explicit timestamp and
 // tombstone flag. This is used during WAL replay to reconstruct the
 // MemTable with the original timestamps from the log.
 func (m *MemTable) PutWithTimestamp(key, value []byte, timestamp uint64, tombstone bool) {
-	m.list.Put(key, value, timestamp, tombstone)
+	m.tree.Put(key, value, timestamp, tombstone)
 }
 
 // Get looks up key and returns the stored value and deletion status.
@@ -66,24 +66,24 @@ func (m *MemTable) PutWithTimestamp(key, value []byte, timestamp uint64, tombsto
 //
 // The returned value slice references internal memory; do not modify it.
 func (m *MemTable) Get(key []byte) (value []byte, found bool, isDeleted bool) {
-	val, _, found, tomb := m.list.Get(key)
+	val, _, found, tomb := m.tree.Get(key)
 	return val, found, tomb
 }
 
 // IsFull returns true when the approximate memory usage has reached
 // or exceeded the configured threshold.
 func (m *MemTable) IsFull() bool {
-	return m.list.Size() >= m.threshold
+	return m.tree.Size() >= m.threshold
 }
 
 // Size returns the approximate memory usage in bytes.
 func (m *MemTable) Size() int64 {
-	return m.list.Size()
+	return m.tree.Size()
 }
 
 // Len returns the number of entries (including tombstones).
 func (m *MemTable) Len() int {
-	return m.list.Len()
+	return m.tree.Len()
 }
 
 // Iterator — ordered traversal for SSTable flushing
@@ -94,7 +94,7 @@ func (m *MemTable) Len() int {
 //
 // Iterator implements the iterator.Iterator interface.
 type Iterator struct {
-	node *skipListNode
+	node *rbNode
 }
 
 // NewIterator returns a forward iterator positioned at the smallest key.
@@ -104,7 +104,7 @@ type Iterator struct {
 // The iterator is only safe to use when no concurrent writes are
 // happening (i.e., on an immutable MemTable that has been rotated).
 func (m *MemTable) NewIterator() *Iterator {
-	return &Iterator{node: m.list.front()}
+	return &Iterator{node: m.tree.front()}
 }
 
 // Valid reports whether the iterator is positioned at a valid entry.
@@ -114,9 +114,7 @@ func (it *Iterator) Valid() bool {
 
 // Next advances the iterator to the next entry in sort order.
 func (it *Iterator) Next() {
-	if it.node != nil {
-		it.node = it.node.next[0]
-	}
+	it.node = successor(it.node)
 }
 
 // Key returns the current entry's key. Do not modify the returned slice.

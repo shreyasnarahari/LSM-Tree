@@ -10,8 +10,8 @@ import (
 
 // Skip List — internal correctness tests
 
-func TestSkipListPutGet(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreePutGet(t *testing.T) {
+	sl := newRedBlackTree()
 	sl.Put([]byte("apple"), []byte("red"), 1, false)
 	sl.Put([]byte("banana"), []byte("yellow"), 2, false)
 	sl.Put([]byte("cherry"), []byte("dark"), 3, false)
@@ -37,8 +37,8 @@ func TestSkipListPutGet(t *testing.T) {
 	}
 }
 
-func TestSkipListOverwrite(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeOverwrite(t *testing.T) {
+	sl := newRedBlackTree()
 	sl.Put([]byte("k"), []byte("v1"), 1, false)
 	sl.Put([]byte("k"), []byte("v2-longer"), 2, false)
 
@@ -51,8 +51,8 @@ func TestSkipListOverwrite(t *testing.T) {
 	}
 }
 
-func TestSkipListTombstone(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeTombstone(t *testing.T) {
+	sl := newRedBlackTree()
 	sl.Put([]byte("k"), []byte("val"), 1, false)
 	sl.Put([]byte("k"), nil, 2, true) // delete
 
@@ -68,16 +68,16 @@ func TestSkipListTombstone(t *testing.T) {
 	}
 }
 
-func TestSkipListOrdering(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeOrdering(t *testing.T) {
+	sl := newRedBlackTree()
 	keys := []string{"zebra", "mango", "apple", "cherry", "banana"}
 	for i, k := range keys {
 		sl.Put([]byte(k), []byte(k), uint64(i), false)
 	}
 
-	// Walk level-0 and collect keys.
+	// Walk the tree and collect keys.
 	var got []string
-	for n := sl.front(); n != nil; n = n.next[0] {
+	for n := sl.front(); n != nil; n = successor(n) {
 		got = append(got, string(n.key))
 	}
 
@@ -92,8 +92,8 @@ func TestSkipListOrdering(t *testing.T) {
 	}
 }
 
-func TestSkipListSizeTracking(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeSizeTracking(t *testing.T) {
+	sl := newRedBlackTree()
 	if sl.Size() != 0 {
 		t.Fatalf("empty size = %d, want 0", sl.Size())
 	}
@@ -185,11 +185,11 @@ func TestMemTablePutWithTimestamp(t *testing.T) {
 	mt.PutWithTimestamp([]byte("d"), nil, 43, true)
 
 	// Verify via internal skip list that timestamps are preserved.
-	_, ts, ok, _ := mt.list.Get([]byte("k"))
+	_, ts, ok, _ := mt.tree.Get([]byte("k"))
 	if !ok || ts != 42 {
 		t.Fatalf("expected ts=42, got ts=%d ok=%v", ts, ok)
 	}
-	_, ts, ok, tomb := mt.list.Get([]byte("d"))
+	_, ts, ok, tomb := mt.tree.Get([]byte("d"))
 	if !ok || ts != 43 || !tomb {
 		t.Fatalf("expected ts=43 tomb=true, got ts=%d tomb=%v ok=%v", ts, tomb, ok)
 	}
@@ -267,8 +267,8 @@ func TestMemTableKeyCopySafety(t *testing.T) {
 
 // Concurrency tests
 
-func TestSkipListConcurrentReads(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeConcurrentReads(t *testing.T) {
+	sl := newRedBlackTree()
 	const n = 1000
 	for i := 0; i < n; i++ {
 		sl.Put([]byte(fmt.Sprintf("k%04d", i)), []byte(fmt.Sprintf("v%04d", i)), uint64(i), false)
@@ -297,8 +297,8 @@ func TestSkipListConcurrentReads(t *testing.T) {
 	wg.Wait()
 }
 
-func TestSkipListConcurrentWriteRead(t *testing.T) {
-	sl := newSkipList()
+func TestRBTreeConcurrentWriteRead(t *testing.T) {
+	sl := newRedBlackTree()
 	const n = 500
 
 	var wg sync.WaitGroup
@@ -333,8 +333,8 @@ func TestSkipListConcurrentWriteRead(t *testing.T) {
 
 // Benchmarks
 
-func BenchmarkSkipListPut(b *testing.B) {
-	sl := newSkipList()
+func BenchmarkRBTreePut(b *testing.B) {
+	sl := newRedBlackTree()
 	keys := make([][]byte, 10000)
 	vals := make([][]byte, 10000)
 	for i := range keys {
@@ -350,8 +350,8 @@ func BenchmarkSkipListPut(b *testing.B) {
 	}
 }
 
-func BenchmarkSkipListGet(b *testing.B) {
-	sl := newSkipList()
+func BenchmarkRBTreeGet(b *testing.B) {
+	sl := newRedBlackTree()
 	const n = 10000
 	keys := make([][]byte, n)
 	for i := 0; i < n; i++ {
@@ -366,8 +366,8 @@ func BenchmarkSkipListGet(b *testing.B) {
 	}
 }
 
-func BenchmarkSkipListPutParallel(b *testing.B) {
-	sl := newSkipList()
+func BenchmarkRBTreePutParallel(b *testing.B) {
+	sl := newRedBlackTree()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -381,8 +381,8 @@ func BenchmarkSkipListPutParallel(b *testing.B) {
 	})
 }
 
-func BenchmarkSkipListGetParallel(b *testing.B) {
-	sl := newSkipList()
+func BenchmarkRBTreeGetParallel(b *testing.B) {
+	sl := newRedBlackTree()
 	const n = 10000
 	keys := make([][]byte, n)
 	for i := 0; i < n; i++ {
