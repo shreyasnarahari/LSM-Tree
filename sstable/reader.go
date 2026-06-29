@@ -98,8 +98,6 @@ func Open(path string) (*Reader, error) {
 //   - (nil,   true, true,  nil)  — key found, tombstone
 //   - (nil,   false, false, nil) — key not present
 //   - (_,     _,    _,     err)  — I/O error
-//
-// The read cascade: Bloom → Index binary search → single block read.
 func (r *Reader) Get(key []byte) (value []byte, found bool, tombstone bool, err error) {
 	// 1. Bloom filter: definite negative means skip disk entirely.
 	if !r.bloom.MayContain(key) {
@@ -170,7 +168,6 @@ func scanBlock(block []byte, key []byte) (value []byte, found bool, tombstone bo
 	return nil, false, false, nil
 }
 
-// MinKey returns the first key in the SSTable (from the index).
 func (r *Reader) MinKey() []byte {
 	if len(r.index) == 0 {
 		return nil
@@ -178,17 +175,14 @@ func (r *Reader) MinKey() []byte {
 	return r.index[0].startKey
 }
 
-// Close closes the underlying file.
 func (r *Reader) Close() error {
 	return r.file.Close()
 }
 
-// Path returns the file path of this SSTable.
 func (r *Reader) Path() string {
 	return r.path
 }
 
-// BlockCount returns the number of data blocks.
 func (r *Reader) BlockCount() int {
 	return len(r.index)
 }

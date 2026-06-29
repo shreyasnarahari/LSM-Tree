@@ -1,13 +1,3 @@
-// Package bloom implements a space-efficient probabilistic data structure
-// for set membership testing.
-//
-// The Bloom filter is used by SSTable readers to skip expensive disk I/O
-// when a key is definitely not present. False positives are possible, but
-// false negatives are not.
-//
-// This implementation uses Kirsch-Mitzenmacker double hashing: a single
-// FNV-1a 64-bit hash is split into two 32-bit halves (h1, h2) and k
-// hash positions are derived as pos_i = (h1 + i*h2) % m.
 package bloom
 
 import (
@@ -62,7 +52,6 @@ func New(expectedItems int, fpRate float64) *Filter {
 	}
 }
 
-// Add inserts key into the filter.
 func (f *Filter) Add(key []byte) {
 	h1, h2 := f.hash(key)
 	for i := uint32(0); i < uint32(f.NumHashes); i++ {
@@ -105,7 +94,6 @@ func (f *Filter) MarshalBinary() []byte {
 	return buf
 }
 
-// Unmarshal reconstructs a filter from serialised bytes.
 func Unmarshal(data []byte) *Filter {
 	numBits := binary.LittleEndian.Uint32(data[0:4])
 	numHashes := data[4]

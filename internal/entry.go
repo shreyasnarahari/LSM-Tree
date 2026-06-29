@@ -1,10 +1,3 @@
-// Package internal defines the foundational data types used across every
-// component of the LSM Tree engine: MemTable, WAL, SSTable, and Compaction.
-//
-// By centralising the canonical entry representation here, we avoid
-// duplicating struct definitions and ensure consistent semantics
-// (especially around tombstone handling and timestamp ordering)
-// throughout the codebase.
 package internal
 
 import "bytes"
@@ -48,7 +41,6 @@ type Entry struct {
 	Op        OpType
 }
 
-// IsDeleted reports whether this entry is a tombstone (deletion marker).
 func (e *Entry) IsDeleted() bool {
 	return e.Op == OpDelete
 }

@@ -46,7 +46,6 @@ func nodeMemSize(keyLen, valLen int) int64 {
 	return nodeBaseSize + int64(keyLen) + int64(valLen)
 }
 
-// Put inserts or updates a key in the tree.
 func (t *redBlackTree) Put(key, value []byte, timestamp uint64, tombstone bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -173,7 +172,6 @@ func (t *redBlackTree) rightRotate(y *rbNode) {
 	y.parent = x
 }
 
-// Get searches for key and returns the stored value and metadata.
 func (t *redBlackTree) Get(key []byte) (value []byte, timestamp uint64, found, tombstone bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -214,7 +212,6 @@ func min(x *rbNode) *rbNode {
 }
 
 // front returns the node with the absolute minimum key in the tree.
-// Caller must hold at least an RLock.
 func (t *redBlackTree) front() *rbNode {
 	return min(t.root)
 }

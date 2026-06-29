@@ -26,7 +26,6 @@ type MergeIterator struct {
 var _ iterator.Iterator = (*MergeIterator)(nil)
 
 // NewMergeIterator creates a MergeIterator from a list of Iterators.
-// The iterators must be ordered from newest (index 0) to oldest.
 func NewMergeIterator(iters []iterator.Iterator) *MergeIterator {
 	m := &MergeIterator{
 		h: make(mergeHeap, 0, len(iters)),

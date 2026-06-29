@@ -1,6 +1,5 @@
 package db
 
-// DBOptions controls engine behaviour.
 type DBOptions struct {
 	// Dir is the directory for all data files (WAL, SSTables).
 	Dir string

@@ -8,7 +8,6 @@ import (
 	"github.com/shreyas/lsmtree/iterator"
 )
 
-// Iterator sequentially traverses all entries in an SSTable.
 type Iterator struct {
 	reader      *Reader
 	blockIdx    int
@@ -29,7 +28,6 @@ type Iterator struct {
 // Ensure Iterator satisfies the shared iterator interface
 var _ iterator.Iterator = (*Iterator)(nil)
 
-// NewIterator creates a new Iterator.
 func (r *Reader) NewIterator() *Iterator {
 	it := &Iterator{
 		reader: r,
@@ -70,12 +68,10 @@ func (it *Iterator) loadNextBlock() {
 	it.blockData = block
 }
 
-// Valid returns true if the iterator is positioned at a valid entry.
 func (it *Iterator) Valid() bool {
 	return it.err == nil && it.key != nil
 }
 
-// Next advances the iterator to the next entry.
 func (it *Iterator) Next() {
 	if it.err != nil {
 		it.key = nil
@@ -130,32 +126,26 @@ func (it *Iterator) Next() {
 	it.entriesRead++
 }
 
-// Key returns the current key.
 func (it *Iterator) Key() []byte {
 	return it.key
 }
 
-// Value returns the current value.
 func (it *Iterator) Value() []byte {
 	return it.value
 }
 
-// Timestamp returns the current timestamp.
 func (it *Iterator) Timestamp() uint64 {
 	return it.timestamp
 }
 
-// Tombstone returns true if the entry is a deletion marker.
 func (it *Iterator) Tombstone() bool {
 	return it.tombstone
 }
 
-// Error returns any error encountered during iteration.
 func (it *Iterator) Error() error {
 	return it.err
 }
 
-// Close releases resources.
 func (it *Iterator) Close() error {
 	return nil // file is managed by Reader
 }

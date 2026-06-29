@@ -1,10 +1,3 @@
-// Package memtable implements the volatile in-memory staging area for
-// recent writes in the LSM Tree engine.
-//
-// The MemTable wraps a skip list to maintain keys in sorted order at
-// all times, enabling efficient sequential flushing to immutable
-// SSTables on disk. It tracks its approximate memory consumption so
-// the engine can rotate it when a configurable size threshold is reached.
 package memtable
 
 import (
@@ -52,7 +45,6 @@ func (m *MemTable) Delete(key []byte) {
 
 // PutWithTimestamp inserts an entry with an explicit timestamp and
 // tombstone flag. This is used during WAL replay to reconstruct the
-// MemTable with the original timestamps from the log.
 func (m *MemTable) PutWithTimestamp(key, value []byte, timestamp uint64, tombstone bool) {
 	m.tree.Put(key, value, timestamp, tombstone)
 }
@@ -63,8 +55,6 @@ func (m *MemTable) PutWithTimestamp(key, value []byte, timestamp uint64, tombsto
 //   - (value, true, false)  — key exists, live entry
 //   - (nil,   true, true)   — key exists, tombstone (deleted)
 //   - (nil,   false, false) — key not found
-//
-// The returned value slice references internal memory; do not modify it.
 func (m *MemTable) Get(key []byte) (value []byte, found bool, isDeleted bool) {
 	val, _, found, tomb := m.tree.Get(key)
 	return val, found, tomb
@@ -76,12 +66,10 @@ func (m *MemTable) IsFull() bool {
 	return m.tree.Size() >= m.threshold
 }
 
-// Size returns the approximate memory usage in bytes.
 func (m *MemTable) Size() int64 {
 	return m.tree.Size()
 }
 
-// Len returns the number of entries (including tombstones).
 func (m *MemTable) Len() int {
 	return m.tree.Len()
 }
@@ -91,8 +79,6 @@ func (m *MemTable) Len() int {
 // Iterator walks the MemTable entries in sorted key order.
 // It is designed to be used on immutable (rotated) MemTables during
 // flushing, where no concurrent writes occur.
-//
-// Iterator implements the iterator.Iterator interface.
 type Iterator struct {
 	node *rbNode
 }
@@ -107,32 +93,26 @@ func (m *MemTable) NewIterator() *Iterator {
 	return &Iterator{node: m.tree.front()}
 }
 
-// Valid reports whether the iterator is positioned at a valid entry.
 func (it *Iterator) Valid() bool {
 	return it.node != nil
 }
 
-// Next advances the iterator to the next entry in sort order.
 func (it *Iterator) Next() {
 	it.node = successor(it.node)
 }
 
-// Key returns the current entry's key. Do not modify the returned slice.
 func (it *Iterator) Key() []byte {
 	return it.node.key
 }
 
-// Value returns the current entry's value. Do not modify the returned slice.
 func (it *Iterator) Value() []byte {
 	return it.node.value
 }
 
-// Timestamp returns the current entry's timestamp.
 func (it *Iterator) Timestamp() uint64 {
 	return it.node.timestamp
 }
 
-// Tombstone reports whether the current entry is a deletion marker.
 func (it *Iterator) Tombstone() bool {
 	return it.node.tombstone
 }
@@ -143,7 +123,6 @@ func (it *Iterator) Error() error {
 	return nil
 }
 
-// Close releases resources. For Iterator, this is a no-op.
 func (it *Iterator) Close() error {
 	return nil
 }

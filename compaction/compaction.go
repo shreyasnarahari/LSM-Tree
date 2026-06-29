@@ -4,20 +4,17 @@ import (
 	"github.com/shreyas/lsmtree/iterator"
 )
 
-// Table defines the read-only interface for an SSTable that can be compacted.
 type Table interface {
 	Iterator() iterator.Iterator
 	BlockCount() int
 	Path() string
 }
 
-// Plan specifies a set of tables to be merged during compaction.
 type Plan struct {
 	Tables []Table
 }
 
 // purgeIterator wraps an Iterator and drops all tombstones.
-// It is only safe to use during a FULL compaction (where no older levels exist).
 type purgeIterator struct {
 	it iterator.Iterator
 }
@@ -25,7 +22,6 @@ type purgeIterator struct {
 // Compile-time check to ensure purgeIterator implements iterator.Iterator
 var _ iterator.Iterator = (*purgeIterator)(nil)
 
-// NewPurgeIterator creates a new iterator that skips over any tombstones.
 func NewPurgeIterator(it iterator.Iterator) iterator.Iterator {
 	p := &purgeIterator{it: it}
 	p.advanceToValid()

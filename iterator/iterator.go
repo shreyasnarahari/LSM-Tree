@@ -1,15 +1,3 @@
-// Package iterator defines the standard interface for sequential, ordered
-// traversal over any data source in the LSM Tree engine.
-//
-// The Iterator interface is implemented by MemTable iterators, SSTable
-// iterators, and merge iterators. By programming against this interface,
-// components like the SSTable builder and compaction engine remain
-// decoupled from specific data-source implementations.
-//
-// All Iterator implementations must yield keys in strictly ascending
-// lexicographic order. If an iterator encounters an unrecoverable error
-// during iteration, Valid() must return false and Error() must return
-// the underlying error.
 package iterator
 
 // Iterator defines the contract for sequential, ordered traversal over

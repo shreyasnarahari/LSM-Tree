@@ -178,8 +178,6 @@ func (db *DB) Delete(key []byte) error {
 // rotateMemTable freezes the active MemTable, prepends it to the
 // immutables list, creates a fresh active MemTable and WAL, and
 // signals the background flush goroutine.
-//
-// Caller must hold writeMu.
 func (db *DB) rotateMemTable() error {
 	// Sync current WAL to guarantee all entries in the frozen MemTable
 	// are durable before we consider them immutable.
@@ -401,7 +399,6 @@ func (db *DB) loadSSTables() error {
 }
 
 // replayWAL replays the Write-Ahead Log to reconstruct the MemTable.
-// If the WAL file doesn't exist, this is a fresh database — no replay.
 func (db *DB) replayWAL(path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil // fresh DB, nothing to replay
@@ -464,14 +461,12 @@ func (db *DB) closeSSTables() {
 
 // Utilities
 
-// SSTCount returns the number of L0 SSTables (for testing/monitoring).
 func (db *DB) SSTCount() int {
 	db.stateMu.RLock()
 	defer db.stateMu.RUnlock()
 	return len(db.sstables)
 }
 
-// ImmutableCount returns the number of pending immutable MemTables.
 func (db *DB) ImmutableCount() int {
 	db.stateMu.RLock()
 	defer db.stateMu.RUnlock()
@@ -479,7 +474,6 @@ func (db *DB) ImmutableCount() int {
 }
 
 // waitForFlush blocks until all immutable MemTables have been flushed.
-// Used in tests to avoid race conditions.
 func (db *DB) waitForFlush() {
 	for {
 		db.stateMu.RLock()

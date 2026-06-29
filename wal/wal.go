@@ -1,15 +1,3 @@
-// Package wal implements an append-only Write-Ahead Log that provides
-// strict durability for the LSM Tree engine.
-//
-// Every key-value mutation is first serialised into a self-describing
-// binary record and written to the WAL before the engine acknowledges
-// the write to the caller. On crash recovery the log is replayed
-// sequentially to reconstruct the volatile in-memory state (MemTable).
-//
-// Writes are batched through a bufio.Writer (4 KB buffer) to reduce
-// the number of write(2) syscalls. Durability is achieved by an
-// explicit Sync() call that flushes the user-space buffer and then
-// invokes fsync(2) on the underlying file descriptor.
 package wal
 
 import (
@@ -166,7 +154,6 @@ func (w *WAL) Sync() error {
 	return nil
 }
 
-// Close syncs and then closes the underlying file.
 func (w *WAL) Close() error {
 	syncErr := w.Sync()
 	closeErr := w.file.Close()
@@ -305,7 +292,6 @@ func (it *Iterator) truncateAt(offset int64) error {
 	return it.file.Truncate(offset)
 }
 
-// Close closes the underlying file handle.
 func (it *Iterator) Close() error {
 	return it.file.Close()
 }
