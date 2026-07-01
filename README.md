@@ -53,7 +53,7 @@ Get(key) → search in freshness order, stop at first hit or tombstone:
   ├── 2. Immutable MemTables       (newest → oldest)
   └── 3. L0 SSTables               (newest → oldest)
            │
-           ├── Bloom Filter check   → reject absent keys (0 disk I/O)
+           ├── Check MinKey bounds  → reject if key is smaller (0 disk I/O)
            ├── Binary search index  → locate 4KB data block
            └── Read single block    → linear scan for key
 ```
@@ -97,7 +97,7 @@ A probabilistically balanced in-memory sorted data structure for fast writes and
 
 ---
 
-### Phase 3 — SSTables & Bloom Filters
+### Phase 3 — SSTables
 
 Immutable, sorted files on disk optimized for minimal seek latency.
 
@@ -111,21 +111,13 @@ Immutable, sorted files on disk optimized for minimal seek latency.
 │ Index Block                              │
 │   [StartKey → (Offset, Length)] × N      │
 ├──────────────────────────────────────────┤
-│ Bloom Filter Block                       │
-│   [NumBits | NumHashes | BitArray]       │
-├──────────────────────────────────────────┤
-│ Footer (40 bytes)                        │
-│   IndexOffset | IndexSize | BloomOffset  │
-│   BloomSize   | Magic (0x4C534D5401)     │
+│ Footer (24 bytes)                        │
+│   IndexOffset | IndexSize                │
+│   Magic (0x4C534D5401)                   │
 └──────────────────────────────────────────┘
 ```
 
-#### Bloom Filter
-- **Algorithm:** Kirsch-Mitzenmacker double hashing (FNV-1a 64-bit → two 32-bit halves)
-- **Target:** 1% false-positive rate → measured **1.00%** ✓
-- **Rejection:** **99.3%** of absent keys rejected without any disk I/O
-
-**Files:** [`bloom.go`](bloom.go) · [`sstable_builder.go`](sstable_builder.go) · [`sstable_reader.go`](sstable_reader.go) · [`sstable_test.go`](sstable_test.go)
+**Files:** [`sstable_builder.go`](sstable_builder.go) · [`sstable_reader.go`](sstable_reader.go) · [`sstable_test.go`](sstable_test.go)
 
 ---
 
@@ -244,7 +236,7 @@ go test -v -count=1 -race -timeout 120s ./...
 # Phase-specific tests
 go test -v -run TestWAL ./...        # Phase 1: WAL
 go test -v -run 'TestSkip|TestMem' ./...  # Phase 2: MemTable
-go test -v -run 'TestBloom|TestSST' ./...  # Phase 3: SSTable
+go test -v -run 'TestSST' ./...  # Phase 3: SSTable
 go test -v -run TestDB ./...          # Phase 4: Engine
 ```
 
@@ -286,7 +278,7 @@ go build -gcflags="-m" ./... 2>&1 | grep -v "test"
 ```
 LSM-Tree/
 ├── go.mod                 # Module: lsmtree (Go 1.22, zero deps)
-├── bloom/                 # Bloom Filter (Phase 3)
+
 ├── compaction/            # Background compactions & min-heap merging (Phase 6)
 ├── db/                    # Core engine facade & orchestration (Phase 4 & 7)
 ├── internal/              # Core interfaces & binary encoding (Phase 1)

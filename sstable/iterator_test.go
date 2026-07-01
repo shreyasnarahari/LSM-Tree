@@ -26,7 +26,7 @@ func TestIterator(t *testing.T) {
 		}
 	}
 
-	if err := Build(path, mt.NewIterator(), mt.Len()); err != nil {
+	if err := Build(path, mt.NewIterator()); err != nil {
 		t.Fatal(err)
 	}
 

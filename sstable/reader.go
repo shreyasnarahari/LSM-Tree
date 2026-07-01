@@ -7,8 +7,6 @@ import (
 	"io"
 	"os"
 	"sort"
-
-	"github.com/shreyas/lsmtree/bloom"
 )
 
 // Reader provides read-only access to an immutable SSTable file.
@@ -23,7 +21,6 @@ import (
 type Reader struct {
 	file  *os.File
 	index []indexEntry
-	bloom *bloom.Filter
 	path  string
 }
 
@@ -54,9 +51,7 @@ func Open(path string) (*Reader, error) {
 
 	indexOffset := binary.LittleEndian.Uint64(footer[0:8])
 	indexSize := binary.LittleEndian.Uint64(footer[8:16])
-	bloomOffset := binary.LittleEndian.Uint64(footer[16:24])
-	bloomSize := binary.LittleEndian.Uint64(footer[24:32])
-	magic := binary.LittleEndian.Uint64(footer[32:40])
+	magic := binary.LittleEndian.Uint64(footer[16:24])
 
 	if magic != sstMagic {
 		f.Close()
@@ -75,18 +70,9 @@ func Open(path string) (*Reader, error) {
 		return nil, fmt.Errorf("sstable: parse index: %w", err)
 	}
 
-	// Read bloom filter block.
-	bloomBuf := make([]byte, bloomSize)
-	if _, err := f.ReadAt(bloomBuf, int64(bloomOffset)); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("sstable: read bloom: %w", err)
-	}
-	bf := bloom.Unmarshal(bloomBuf)
-
 	return &Reader{
 		file:  f,
 		index: index,
-		bloom: bf,
 		path:  path,
 	}, nil
 }
@@ -99,8 +85,8 @@ func Open(path string) (*Reader, error) {
 //   - (nil,   false, false, nil) — key not present
 //   - (_,     _,    _,     err)  — I/O error
 func (r *Reader) Get(key []byte) (value []byte, found bool, tombstone bool, err error) {
-	// 1. Bloom filter: definite negative means skip disk entirely.
-	if !r.bloom.MayContain(key) {
+	// 1. MinKey optimization (Fence Pointer).
+	if len(r.index) > 0 && bytes.Compare(key, r.index[0].startKey) < 0 {
 		return nil, false, false, nil
 	}
 

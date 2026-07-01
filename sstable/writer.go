@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/shreyas/lsmtree/bloom"
 	"github.com/shreyas/lsmtree/internal"
 	"github.com/shreyas/lsmtree/iterator"
 )
@@ -24,8 +23,8 @@ const (
 	// entryHeaderSize: KeyLen(2) + ValLen(4) + Tombstone(1) + Timestamp(8) = 15.
 	entryHeaderSize = 15
 
-	// footerSize: 5 × uint64 = 40 bytes.
-	footerSize = 40
+	// footerSize: 3 × uint64 = 24 bytes.
+	footerSize = 24
 
 	// sstMagic is the magic number written in the SSTable footer.
 	// Encodes "LSMT\x01" conceptually.
@@ -47,13 +46,12 @@ type indexEntry struct {
 //
 //	[Data Block 0 (4 KB padded)]…[Data Block N]
 //	[Index Block]
-//	[Bloom Filter Block]
-//	[Footer (40 B)]
+//	[Footer (24 B)]
 //
 // Each data block entry:
 //
 //	[KeyLen 2B][ValLen 4B][Tombstone 1B][Timestamp 8B][Key][Value]
-func Build(path string, iter iterator.Iterator, expectedItems int) error {
+func Build(path string, iter iterator.Iterator) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("sstable: create %q: %w", path, err)
@@ -62,7 +60,6 @@ func Build(path string, iter iterator.Iterator, expectedItems int) error {
 
 	w := bufio.NewWriterSize(f, 64*1024) // 64 KB write buffer
 
-	bf := bloom.New(max(expectedItems, 1), 0.01)
 	var index []indexEntry
 	var blockBuf bytes.Buffer
 	var blockEntries uint32
@@ -119,8 +116,6 @@ func Build(path string, iter iterator.Iterator, expectedItems int) error {
 		tombstone := iter.Tombstone()
 		timestamp := iter.Timestamp()
 
-		bf.Add(key)
-
 		eSize := entryHeaderSize + len(key) + len(value)
 
 		// Seal current block if adding this entry would exceed blockSize.
@@ -164,21 +159,11 @@ func Build(path string, iter iterator.Iterator, expectedItems int) error {
 	}
 	fileOffset += int64(len(indexData))
 
-	// write bloom filter block
-	bloomOffset := fileOffset
-	bloomData := bf.MarshalBinary()
-	if _, err := w.Write(bloomData); err != nil {
-		return fmt.Errorf("sstable: write bloom: %w", err)
-	}
-	fileOffset += int64(len(bloomData))
-
 	// write footer
 	var footer [footerSize]byte
 	binary.LittleEndian.PutUint64(footer[0:8], uint64(indexOffset))
 	binary.LittleEndian.PutUint64(footer[8:16], uint64(len(indexData)))
-	binary.LittleEndian.PutUint64(footer[16:24], uint64(bloomOffset))
-	binary.LittleEndian.PutUint64(footer[24:32], uint64(len(bloomData)))
-	binary.LittleEndian.PutUint64(footer[32:40], sstMagic)
+	binary.LittleEndian.PutUint64(footer[16:24], sstMagic)
 	if _, err := w.Write(footer[:]); err != nil {
 		return fmt.Errorf("sstable: write footer: %w", err)
 	}
