@@ -23,7 +23,7 @@ func buildTestSSTable(t testing.TB, dir string, name string, n int) string {
 		)
 	}
 	path := filepath.Join(dir, name)
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), mt.Len()); err != nil {
 		t.Fatalf("Build: %v", err)
 	}
 	return path
@@ -79,7 +79,7 @@ func TestSSTableTombstone(t *testing.T) {
 	mt.PutWithTimestamp([]byte("dead"), nil, 2, true)
 
 	path := filepath.Join(dir, "tomb.sst")
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), mt.Len()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +134,32 @@ func TestSSTableSingleBlockRead(t *testing.T) {
 	}
 }
 
+func TestSSTableBloomFilterRejectsAbsentKeys(t *testing.T) {
+	dir := t.TempDir()
+	const n = 10000
+	path := buildTestSSTable(t, dir, "bloom-reject.sst", n)
 
+	reader, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+
+	// Probe absent keys — bloom should reject most without disk I/O.
+	rejected := 0
+	const probes = 1000
+	for i := 0; i < probes; i++ {
+		key := []byte(fmt.Sprintf("absent-%08d", i))
+		if !reader.bloom.MayContain(key) {
+			rejected++
+		}
+	}
+	rejectRate := float64(rejected) / float64(probes)
+	t.Logf("bloom rejected %d/%d absent keys (%.1f%%)", rejected, probes, rejectRate*100)
+	if rejectRate < 0.95 {
+		t.Fatalf("bloom should reject >95%% of absent keys, got %.1f%%", rejectRate*100)
+	}
+}
 
 func TestSSTableMagicNumberValidation(t *testing.T) {
 	dir := t.TempDir()
@@ -161,7 +186,7 @@ func TestSSTableEmpty(t *testing.T) {
 	dir := t.TempDir()
 	mt := memtable.New(1 << 30)
 	path := filepath.Join(dir, "empty.sst")
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -192,7 +217,7 @@ func TestSSTableLargeValues(t *testing.T) {
 	}
 
 	path := filepath.Join(dir, "large.sst")
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), mt.Len()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -248,7 +273,7 @@ func BenchmarkSSTableBuild(b *testing.B) {
 			)
 		}
 		path := filepath.Join(dir, fmt.Sprintf("bench-%d.sst", i))
-		if err := Build(path, mt.NewIterator()); err != nil {
+		if err := Build(path, mt.NewIterator(), n); err != nil {
 			b.Fatal(err)
 		}
 		os.Remove(path)
@@ -266,7 +291,7 @@ func BenchmarkSSTableGet(b *testing.B) {
 		mt.PutWithTimestamp(keys[i], keys[i], uint64(i), false)
 	}
 	path := filepath.Join(dir, "get-bench.sst")
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), n); err != nil {
 		b.Fatal(err)
 	}
 
@@ -299,7 +324,7 @@ func BenchmarkSSTableGetMiss(b *testing.B) {
 		)
 	}
 	path := filepath.Join(dir, "miss-bench.sst")
-	if err := Build(path, mt.NewIterator()); err != nil {
+	if err := Build(path, mt.NewIterator(), n); err != nil {
 		b.Fatal(err)
 	}
 

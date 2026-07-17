@@ -328,7 +328,7 @@ func (db *DB) flushAllImmutables() {
 		sstPath := filepath.Join(db.opts.Dir, fmt.Sprintf("sst_%06d.sst", seq))
 
 		iter := oldest.NewIterator()
-		if err := sstable.Build(sstPath, iter); err != nil {
+		if err := sstable.Build(sstPath, iter, oldest.Len()); err != nil {
 			// Log error but don't crash — retry on next trigger.
 			// In production, this would use a proper logger.
 			fmt.Fprintf(os.Stderr, "db: flush error: %v\n", err)

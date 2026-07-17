@@ -64,7 +64,17 @@ func (db *DB) runCompaction() {
 	// We will wrap the merge iterator to drop tombstones.
 	purgeIt := compaction.NewPurgeIterator(mergeIt)
 
-	if err := sstable.Build(newSSTPath, purgeIt); err != nil {
+	// We don't know the exact count for the bloom filter, but we can estimate
+	// based on the old tables. Let's sum the block counts (rough proxy).
+	// For simplicity, we just use 100,000 as expectedItems if we don't know,
+	// but BuildSSTable takes expectedItems. Let's estimate it.
+	expectedItems := 0
+	for _, sst := range tablesToCompact {
+		// ~100 items per 4KB block is a reasonable guess
+		expectedItems += sst.BlockCount() * 100
+	}
+
+	if err := sstable.Build(newSSTPath, purgeIt, expectedItems); err != nil {
 		fmt.Fprintf(os.Stderr, "db: compaction build error: %v\n", err)
 		return
 	}
